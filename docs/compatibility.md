@@ -54,6 +54,10 @@ Classes, parameter names, `state_dict` keys, initialisation and checkpoint forma
   HVP and `vmap` patterns of [scbirlab/duvida](https://github.com/scbirlab/duvida) (including `functional_call` over a
   Chemprop MPNN with ELU activations). Second-order passes through the native kernel run only for plain autograd
   (`create_graph=True`).
+- **Export (ONNX, `torch.jit.trace`, `torch.export`)**: while tracing/exporting, the replacements step aside and
+  Chemprop's own code runs, because exporters cannot serialise the custom operator. Export behaviour is therefore
+  identical to Chemprop's (including any upstream limitations, e.g. `scatter_reduce(include_self=False)` on older
+  exporters). Call `chemprop_accel.disable()` if you prefer to be explicit.
 - **Determinism**: results are bitwise independent of thread count for variant 0; variants 1 and 2 also own disjoint
   outputs per thread. Results differ from Chemprop's `scatter_reduce_` only by floating-point summation order.
 - **bf16 / autocast, fp16**: use the original code path.

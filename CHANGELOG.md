@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- ONNX / TorchScript / `torch.export` tracing now uses Chemprop's original code (the custom operator cannot be
+  exported), so enabling the accelerator no longer adds export failures.
+
 ### Added
 - Benchmark: inference (no-grad forward) speedup chart and a same-weights inference-equivalence column in the report.
 - Differentiable backward for the fused op: double backward, Hessian-vector products and Hessians now work, with

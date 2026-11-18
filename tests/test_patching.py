@@ -200,3 +200,20 @@ def test_accelerated_ops_are_actually_called(monkeypatch):
     m(b.bmg)
     assert calls == {"edge": 0, "scatter": 0}
     ca.enable()
+
+
+def test_export_and_tracing_use_original_code(monkeypatch):
+    """Exporters cannot serialise the custom op, so the replacements must step aside while exporting."""
+    from chemprop_accel import _patch
+
+    H = torch.randn(4, 3)
+    idx = torch.tensor([0, 1, 1, 0])
+    assert _patch._fast_ok(H, idx)
+    for name in ("is_in_onnx_export",):
+        monkeypatch.setattr(torch.onnx, name, lambda: True)
+        assert not _patch._fast_ok(H, idx)
+        monkeypatch.undo()
+    monkeypatch.setattr(torch.jit, "is_tracing", lambda: True)
+    assert not _patch._fast_ok(H, idx)
+    monkeypatch.undo()
+    assert _patch._fast_ok(H, idx)

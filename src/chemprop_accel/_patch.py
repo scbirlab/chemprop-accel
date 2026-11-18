@@ -15,10 +15,26 @@ _LOCK = threading.RLock()
 _NATIVE_FLOATS = (torch.float32, torch.float64)
 
 
+def _exporting() -> bool:
+    """True while exporting/tracing for ONNX, TorchScript or ``torch.export``.
+
+    The replacements use a custom operator that exporters cannot serialise, so Chemprop's own
+    (exportable) code is used instead. ``torch.compile`` is unaffected.
+    """
+    try:
+        if torch.onnx.is_in_onnx_export() or torch.jit.is_tracing():
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    f = getattr(torch.compiler, "is_exporting", None)
+    return bool(f()) if f is not None else False
+
+
 def _fast_ok(H: torch.Tensor, *idx: torch.Tensor) -> bool:
     """Replacement kernels run only for plain CPU float tensors; anything else uses the original."""
     return (
-        H.device.type == "cpu"
+        not _exporting()
+        and H.device.type == "cpu"
         and H.dtype in _NATIVE_FLOATS
         and H.dim() == 2
         and all(i.device.type == "cpu" and i.dtype == torch.long for i in idx)
