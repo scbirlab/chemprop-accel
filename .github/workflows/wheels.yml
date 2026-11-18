@@ -24,7 +24,7 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
         torch: ["2.4.*", "2.8.*", "latest"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Install torch (CPU build)
@@ -58,7 +58,7 @@ jobs:
   sdist-and-pure:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: pip install build
