@@ -278,10 +278,15 @@ def _param_hessian_diag(model, bmg, on):
 
 def test_hessian_through_message_passing_matches_original():
     torch.manual_seed(0)
-    model = models.MPNN(
-        build_mp("bond", activation="elu"), nn.NormAggregation(),
-        nn.RegressionFFN(input_dim=32, hidden_dim=16),
-    ).double().eval()
+    model = (
+        models.MPNN(
+            build_mp("bond", activation="elu"),
+            nn.NormAggregation(),
+            nn.RegressionFFN(input_dim=32, hidden_dim=16),
+        )
+        .double()
+        .eval()
+    )
     bmg = make_bmg(dtype=torch.float64)
     a = _param_hessian_diag(model, bmg, on=True)
     b = _param_hessian_diag(model, bmg, on=False)
@@ -293,10 +298,15 @@ def test_hessian_through_message_passing_matches_original():
 def test_hvp_wrt_message_passing_weights_matches_original():
     """Double backward through the fused op to an *early* (message-passing) parameter."""
     torch.manual_seed(1)
-    model = models.MPNN(
-        build_mp("bond", activation="elu"), nn.MeanAggregation(),
-        nn.RegressionFFN(input_dim=32, hidden_dim=16),
-    ).double().eval()
+    model = (
+        models.MPNN(
+            build_mp("bond", activation="elu"),
+            nn.MeanAggregation(),
+            nn.RegressionFFN(input_dim=32, hidden_dim=16),
+        )
+        .double()
+        .eval()
+    )
     bmg = make_bmg(dtype=torch.float64)
     p = model.message_passing.W_h.weight
 
