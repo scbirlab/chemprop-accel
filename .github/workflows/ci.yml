@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    name: py${{ matrix.python }} · chemprop ${{ matrix.chemprop }} · torch ${{ matrix.torch }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+        chemprop: ["2.2.0", "2.2.4", "2.3.1", "main"]
+        torch: ["latest"]
+        experimental: [false]
+        include:
+          # oldest torch that provides torch.library.register_autograd (needed for the native ops)
+          - {python: "3.12", chemprop: "2.3.1", torch: "2.4.*", experimental: false}
+          # newest Python: allowed to fail until wheels for the whole stack exist
+          - {python: "3.14", chemprop: "2.3.1", torch: "latest", experimental: true}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+          cache: pip
+      - name: Install CPU PyTorch
+        run: |
+          if [ "${{ matrix.torch }}" = "latest" ]; then T="torch"; else T="torch==${{ matrix.torch }}"; fi
+          pip install "$T" --index-url https://download.pytorch.org/whl/cpu
+      - name: Install Chemprop
+        run: |
+          if [ "${{ matrix.chemprop }}" = "main" ]; then
+            pip install "chemprop @ git+https://github.com/chemprop/chemprop.git@main"
+          else
+            pip install "chemprop==${{ matrix.chemprop }}"
+          fi
+      - name: Build and install chemprop-accel (native extension required)
+        env:
+          CHEMPROP_ACCEL_REQUIRE_NATIVE: "1"
+        run: |
+          pip install pytest pytest-cov setuptools wheel ninja
+          pip install --no-build-isolation --no-deps -e .
+      - name: Show environment
+        run: |
+          pip list | grep -iE "^(torch|chemprop|lightning|rdkit|numpy|chemprop-accel) "
+          python -c "import chemprop_accel as c; print(c.status())"
+      - name: Tests (native)
+        run: pytest --cov --cov-report=xml -q
+      - name: Tests (pure-PyTorch fallback)
+        env:
+          CHEMPROP_ACCEL_NO_NATIVE: "1"
+        run: pytest -q --deselect tests/test_compile.py
+      - name: Upload coverage
+        if: matrix.python == '3.12' && matrix.chemprop == '2.3.1' && matrix.torch == 'latest'
+        uses: actions/upload-artifact@v4
+        with: {name: coverage, path: coverage.xml}
+
+  test-other-os:
+    name: ${{ matrix.os }} · py3.12
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - name: Install CPU PyTorch (Linux/Windows)
+        if: runner.os != 'macOS'
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install PyTorch (macOS)
+        if: runner.os == 'macOS'
+        run: pip install torch
+      - run: pip install "chemprop>=2.2,<2.4" pytest pytest-cov setuptools wheel ninja
+      - name: Build and install (native build is best-effort off Linux x86-64)
+        run: pip install --no-build-isolation --no-deps -e .
+      - run: python -c "import chemprop_accel as c; print(c.status())"
+      - run: pytest -q -x --deselect tests/test_compile.py
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install build twine
+      - name: Build sdist and pure-Python wheel (no torch needed)
+        run: CHEMPROP_ACCEL_NO_NATIVE=1 python -m build
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with: {name: dist, path: dist/*}

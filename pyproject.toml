@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chemprop-accel"
+version = "0.1.0"
+description = "Drop-in multicore CPU acceleration for Chemprop v2: `import chemprop_accel`."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+license = { text = "MIT" }
+authors = [{ name = "Eachan Johnson" }]
+keywords = ["chemprop", "pytorch", "graph neural network", "cheminformatics", "performance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: C++",
+  "Topic :: Scientific/Engineering :: Chemistry",
+]
+dependencies = ["torch>=2.4"]
+
+[project.optional-dependencies]
+chemprop = ["chemprop>=2.2,<2.4"]
+test = ["pytest>=8", "pytest-cov", "chemprop>=2.2,<2.4"]
+docs = [
+  "sphinx>=7.3",
+  "pydata-sphinx-theme>=0.15",
+  "myst-parser>=3",
+  "sphinx-copybutton",
+  "sphinx-design",
+]
+dev = ["chemprop-accel[test,docs]", "ruff", "pre-commit", "build"]
+
+[project.scripts]
+chemprop-accel-bench = "chemprop_accel.bench.__main__:main"
+chemprop-accel-report = "chemprop_accel.bench.report:main"
+
+[project.urls]
+Homepage = "https://github.com/scbirlab/chemprop-accel"
+Documentation = "https://scbirlab.github.io/chemprop-accel/"
+Issues = "https://github.com/scbirlab/chemprop-accel/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+chemprop_accel = ["py.typed", "_C.*", "_build_info.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "native: requires the compiled extension",
+  "slow: slower end-to-end tests",
+]
+filterwarnings = ["ignore::DeprecationWarning", "ignore:.*Failed to initialize NumPy.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["E501", "B905"]
+
+[tool.coverage.run]
+source = ["chemprop_accel"]

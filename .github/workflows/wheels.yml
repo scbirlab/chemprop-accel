@@ -1,0 +1,91 @@
+name: Wheels & release
+
+# Native wheels are tied to a PyTorch *minor* version (C++ ABI) but not to a Python version
+# (the library has no Python.h dependency), so they are tagged py3-none-<platform>. We build one
+# wheel set per supported torch minor and attach them to the GitHub release, together with a
+# simple find-links index. A pure-Python wheel + sdist go to PyPI (users get the PyTorch fallback or
+# build the extension locally with `--no-build-isolation`).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: wheel · ${{ matrix.os }} · torch ${{ matrix.torch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        torch: ["2.4.*", "2.8.*", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Install torch (CPU build)
+        shell: bash
+        run: |
+          if [ "${{ matrix.torch }}" = "latest" ]; then T="torch"; else T="torch==${{ matrix.torch }}"; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then pip install "$T"; else pip install "$T" --index-url https://download.pytorch.org/whl/cpu; fi
+      - run: pip install build setuptools wheel ninja
+      - name: Build wheel
+        env: {CHEMPROP_ACCEL_REQUIRE_NATIVE: "1"}
+        run: python -m build --wheel --no-isolation
+      - name: Smoke test the built wheel
+        shell: bash
+        run: |
+          pip install "chemprop>=2.2,<2.4" "$(ls dist/*.whl)" --no-deps
+          python -c "import chemprop_accel as c; s=c.status(); print(s); assert s.native_available, s.native_reason"
+      - name: Name wheel with torch tag
+        shell: bash
+        run: |
+          # Wheel file names must be unique per torch minor: encode it as the wheel *build tag*
+          # (chemprop_accel-0.1.0-1torch2.15-py3-none-<plat>.whl). Users pick the file matching their torch.
+          TV=$(python -c "import torch;print('.'.join(torch.__version__.split('+')[0].split('.')[:2]))")
+          python -m wheel tags --build "1torch${TV}" --remove dist/*.whl
+          mkdir -p out
+          cp dist/*.whl out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.os }}-${{ matrix.torch }}
+          path: out
+
+  sdist-and-pure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install build
+      - run: CHEMPROP_ACCEL_NO_NATIVE=1 python -m build
+      - uses: actions/upload-artifact@v4
+        with: {name: dist, path: dist/*}
+
+  publish-pypi:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: sdist-and-pure
+    runs-on: ubuntu-latest
+    environment: {name: pypi}
+    permissions: {id-token: write}      # PyPI trusted publishing (configure it on pypi.org first)
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: dist, path: dist}
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wheels, sdist-and-pure]
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {pattern: "wheel-*", path: wheels, merge-multiple: true}
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: wheels/**/*.whl
